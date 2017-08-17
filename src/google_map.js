@@ -1,5 +1,4 @@
-import React, { Component } from 'react';
-import PropTypes from 'prop-types';
+import React, { PropTypes, Component } from 'react';
 import ReactDOM from 'react-dom';
 
 import shallowEqual from 'fbjs/lib/shallowEqual';
@@ -53,14 +52,14 @@ export default class GoogleMap extends Component {
     apiKey: PropTypes.string,
     bootstrapURLKeys: PropTypes.any,
 
-    defaultCenter: PropTypes.oneOfType([
+    defaultCenter: React.PropTypes.oneOfType([
       PropTypes.array,
       PropTypes.shape({
         lat: PropTypes.number,
         lng: PropTypes.number,
       }),
     ]),
-    center: PropTypes.oneOfType([
+    center: React.PropTypes.oneOfType([
       PropTypes.array,
       PropTypes.shape({
         lat: PropTypes.number,
@@ -96,6 +95,9 @@ export default class GoogleMap extends Component {
     layerTypes: PropTypes.arrayOf(PropTypes.string), // ['TransitLayer', 'TrafficLayer']
     geoJsonUrls: PropTypes.arrayOf(PropTypes.string), // [url1, url2]
     geoJsonFeatures: PropTypes.object, // { key: json, key2: json2}
+    googleZoom: PropTypes.number,
+    zoomBoxMode: PropTypes.bool,
+    mapMode: PropTypes.string,
     polylines: PropTypes.array,
     polygons: PropTypes.array,
     circles: PropTypes.array,
@@ -161,9 +163,13 @@ export default class GoogleMap extends Component {
     this.geoJsonFeatureDict = {};
     this.geoJsonRendered = false;
 
+    this.zoomBoxMode = false;
+    this.mapMode = 'DARK_MODE';
     this.polylines = [];
     this.polygons = [];
     this.circles = [];
+
+    this.drawingManager_ = null;
 
     if (process.env.NODE_ENV !== 'production') {
       if (this.props.apiKey) {
@@ -198,6 +204,7 @@ export default class GoogleMap extends Component {
 
     this.state = {
       overlayCreated: false,
+      drawingManagerCreated: false
     };
   }
 
@@ -235,7 +242,6 @@ export default class GoogleMap extends Component {
       detectElementResize.addResizeListener(mapDom, that._mapDomResizeCallback);
     }
   }
-
 
   componentWillReceiveProps(nextProps) {
     if (process.env.NODE_ENV !== 'production') {
@@ -373,6 +379,43 @@ export default class GoogleMap extends Component {
             this._addGeoJson(newKey, nextProps.geoJsonFeatures[newKey]);
           }
         }
+      }
+      if (nextProps.zoomBoxMode) {
+        // Update style based on the map mode only on change
+        if (this.props.mapMode !== nextProps.mapMode) {
+          if (nextProps.mapMode === 'DARK_MODE') {
+            this.drawingManager_.setOptions({
+              rectangleOptions: {
+                strokeColor: '#00C2FF',
+                strokeWeight: 1,
+                fillColor: '#00C2FF',
+                fillOpacity: 0.1
+              }
+            });
+          } else {
+            this.drawingManager_.setOptions({
+              rectangleOptions: {
+                strokeColor: '#FFFFFF',
+                strokeWeight: 1,
+                fillColor: '#FFFFFF',
+                fillOpacity: 0.1
+              }
+            });
+          }
+        }
+        // turn on rectangle drawingManager for boxZoom
+        if (!this.state.drawingManagerCreated) {
+          this.drawingManager_.setOptions({
+            drawingMode: google.maps.drawing.OverlayType.RECTANGLE
+          });
+          this.setState({ drawingManagerCreated: true });
+        }
+      } else if (this.state.drawingManagerCreated) {
+        // turn off drawing if zoomBoxMode is false and you were currently drawing
+        this.drawingManager_.setOptions({
+          drawingMode: null
+        });
+        this.setState({ drawingManagerCreated: false });
       }
       if (this.props.polylines !== nextProps.polylines) {
         this.polylines.map(polyline => polyline.setMap(null));
@@ -606,10 +649,22 @@ export default class GoogleMap extends Component {
       mapOptions.minZoom = this._checkMinZoom(mapOptions.minZoom, minZoom);
 
       const map = new maps.Map(ReactDOM.findDOMNode(this.refs.google_map_dom), mapOptions);
-      //console.log('map init OMGO OMG OM G');
 
       this.map_ = map;
       this.maps_ = maps;
+
+      this.drawingManager_ = new this.maps_.drawing.DrawingManager();
+      this.drawingManager_.setOptions({
+        drawingMode: null,
+        drawingControl: false, // hides control bar
+        rectangleOptions: {
+          strokeColor: '#00C2FF',
+          strokeWeight: 1,
+          fillColor: '#00C2FF',
+          fillOpacity: 0.1,
+        }
+      });
+      this.drawingManager_.setMap(this.map_);
 
       this._setLayers(this.props.layerTypes);
 
@@ -687,7 +742,6 @@ export default class GoogleMap extends Component {
 
       overlay.setMap(map);
 
-
       if (this.props.polylines) {
         this.polylines = this.props.polylines.map(polylineConfig => {
           const polyline = new this.maps_.Polyline(polylineConfig);
@@ -712,6 +766,42 @@ export default class GoogleMap extends Component {
           return circle;
         });
       }
+
+      // listen for rectangle to be drawn
+      maps.event.addListener(this.drawingManager_, 'rectanglecomplete', event => {
+        // turn of draw
+        this_.drawingManager_.setOptions({
+          drawingMode: null,
+        });
+        this_.setState({ drawingManagerCreated: false });
+
+        const mapBounds = map.getBounds();
+        const mapHeight = mapBounds.getNorthEast().lat() - mapBounds.getSouthWest().lat();
+        const mapWidth = mapBounds.getNorthEast().lng() - mapBounds.getSouthWest().lng();
+
+        const rectBounds = event.getBounds();
+        const rectHeight = rectBounds.getNorthEast().lat() - rectBounds.getSouthWest().lat();
+        const rectWidth = rectBounds.getNorthEast().lng() - rectBounds.getSouthWest().lng();
+
+        // calc how much to zoom
+        const widthZoom = mapWidth / rectWidth;
+        const heightZoom = mapHeight / rectHeight;
+
+        // apply new zoomLevel and center map
+        let newZoom;
+        if (heightZoom < widthZoom) {
+          newZoom = Math.floor(Math.log2(heightZoom));
+        } else {
+          newZoom = Math.floor(Math.log2(widthZoom));
+        }
+        if (newZoom > 0) {
+          map.setZoom(map.getZoom() + newZoom);
+        }
+        map.setCenter(event.getBounds().getCenter());
+
+        // remove rectangle
+        event.setMap(null);
+      });
 
       maps.event.addListener(map, 'zoom_changed', () => {
         // recalc position at zoom start
