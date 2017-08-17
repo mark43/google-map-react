@@ -164,7 +164,7 @@ export default class GoogleMap extends Component {
     this.geoJsonRendered = false;
 
     this.zoomBoxMode = false;
-    this.mapMode = "DARK_MODE";
+    this.mapMode = 'DARK_MODE';
     this.polylines = [];
     this.polygons = [];
     this.circles = [];
@@ -242,7 +242,6 @@ export default class GoogleMap extends Component {
       detectElementResize.addResizeListener(mapDom, that._mapDomResizeCallback);
     }
   }
-
 
   componentWillReceiveProps(nextProps) {
     if (process.env.NODE_ENV !== 'production') {
@@ -384,13 +383,13 @@ export default class GoogleMap extends Component {
       if (nextProps.zoomBoxMode) {
         // Update style based on the map mode only on change
         if (this.props.mapMode !== nextProps.mapMode) {
-          if (nextProps.mapMode === "DARK_MODE") {
+          if (nextProps.mapMode === 'DARK_MODE') {
             this.drawingManager_.setOptions({
               rectangleOptions: {
                 strokeColor: '#00C2FF',
                 strokeWeight: 1,
                 fillColor: '#00C2FF',
-                fillOpacity: 0.1,
+                fillOpacity: 0.1
               }
             });
           } else {
@@ -399,7 +398,7 @@ export default class GoogleMap extends Component {
                 strokeColor: '#FFFFFF',
                 strokeWeight: 1,
                 fillColor: '#FFFFFF',
-                fillOpacity: 0.1,
+                fillOpacity: 0.1
               }
             });
           }
@@ -414,7 +413,7 @@ export default class GoogleMap extends Component {
       } else if (this.state.drawingManagerCreated) {
         // turn off drawing if zoomBoxMode is false and you were currently drawing
         this.drawingManager_.setOptions({
-          drawingMode : null
+          drawingMode: null
         });
         this.setState({ drawingManagerCreated: false });
       }
@@ -650,7 +649,6 @@ export default class GoogleMap extends Component {
       mapOptions.minZoom = this._checkMinZoom(mapOptions.minZoom, minZoom);
 
       const map = new maps.Map(ReactDOM.findDOMNode(this.refs.google_map_dom), mapOptions);
-      // console.log('map init OMGO OMG OM G');
 
       this.map_ = map;
       this.maps_ = maps;
@@ -659,7 +657,7 @@ export default class GoogleMap extends Component {
       this.drawingManager_.setOptions({
         drawingMode: null,
         drawingControl: false, // hides control bar
-        rectangleOptions : {
+        rectangleOptions: {
           strokeColor: '#00C2FF',
           strokeWeight: 1,
           fillColor: '#00C2FF',
@@ -770,13 +768,13 @@ export default class GoogleMap extends Component {
       }
 
       // listen for rectangle to be drawn
-      maps.event.addListener(this.drawingManager_, 'rectanglecomplete', function(event) {
+      maps.event.addListener(this.drawingManager_, 'rectanglecomplete', event => {
         // turn of draw
         this_.drawingManager_.setOptions({
           drawingMode: null,
         });
         this_.setState({ drawingManagerCreated: false });
-        
+
         const mapBounds = map.getBounds();
         const mapHeight = mapBounds.getNorthEast().lat() - mapBounds.getSouthWest().lat();
         const mapWidth = mapBounds.getNorthEast().lng() - mapBounds.getSouthWest().lng();
@@ -786,9 +784,9 @@ export default class GoogleMap extends Component {
         const rectWidth = rectBounds.getNorthEast().lng() - rectBounds.getSouthWest().lng();
 
         // calc how much to zoom
-        const widthZoom = mapWidth/rectWidth;
-        const heightZoom = mapHeight/rectHeight;
-      
+        const widthZoom = mapWidth / rectWidth;
+        const heightZoom = mapHeight / rectHeight;
+
         // apply new zoomLevel and center map
         let newZoom;
         if (heightZoom < widthZoom) {
@@ -800,7 +798,7 @@ export default class GoogleMap extends Component {
           map.setZoom(map.getZoom() + newZoom);
         }
         map.setCenter(event.getBounds().getCenter());
-        
+
         // remove rectangle
         event.setMap(null);
       });
